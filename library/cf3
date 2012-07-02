@@ -1,0 +1,51 @@
+#!/usr/bin/python
+
+import os
+import subprocess
+from datetime import datetime
+
+try:
+    import json
+except ImportError:
+    import simplejson as json
+
+EXCEPT = set(['reporter', 'verbose_mode'])
+
+def parse_promise_status(lines, filt):
+    for line in lines:
+        if filt in line:
+            ls = line.split(': ', 2)
+            lt = datetime.fromtimestamp(int(ls[0].split(',', 1)[1]))
+            return lt.isoformat(), ls[2]
+    return None, None
+
+def get_promise_status():
+    with open('/var/cfengine/promise_summary.log', 'r') as f:
+        f.seek(-256, os.SEEK_END)
+
+        d = f.read(256)
+        lines = d.splitlines()[::-1]
+        pt, ps = parse_promise_status(lines, 'Promises.cf')
+        ft, fs = parse_promise_status(lines, 'Failsafe.cf')
+        return (pt, ft, ps or 'FAILSAFE: %s' % fs)
+
+def get_classes():
+    p = subprocess.Popen(["cf-report", "-v"], bufsize=1, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, close_fds=True)
+    buf = []
+    for line in p.stdout:
+        if 'Defined classes' in line:
+            classes = line.split('{', 1)[1].split('}', 1)[0].strip().split()
+            classes = set(classes) - EXCEPT
+            return sorted(classes)
+        buf.append(line)
+    return buf[-3:]
+
+
+pt, ft, status = get_promise_status()
+print json.dumps({
+        "status" : status,
+        "last_run" : pt,
+        "last_update" : ft,
+        "classes" : get_classes(),
+    })
