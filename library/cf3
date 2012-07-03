@@ -9,6 +9,7 @@ try:
 except ImportError:
     import simplejson as json
 
+BUF = 1024
 EXCEPT = set(['reporter', 'verbose_mode'])
 
 def parse_promise_status(lines, filt):
@@ -20,10 +21,11 @@ def parse_promise_status(lines, filt):
     return None, None
 
 def get_promise_status():
+    global BUF
     with open('/var/cfengine/promise_summary.log', 'r') as f:
-        f.seek(-256, os.SEEK_END)
+        f.seek(-BUF, os.SEEK_END)
 
-        d = f.read(256)
+        d = f.read(BUF)
         lines = d.splitlines()[::-1]
         pt, ps = parse_promise_status(lines, 'Promises.cf')
         ft, fs = parse_promise_status(lines, 'Failsafe.cf')
@@ -41,6 +43,17 @@ def get_classes():
         buf.append(line)
     return buf[-3:]
 
+def get_custom_classes():
+    try:
+        classes = []
+        with open('/etc/igdconf/cf-classes', 'r') as f:
+            for line in f:
+                if line.strip().startswith('#'):
+                    continue
+                classes.extend(line.split())
+        return classes
+    except IOError:
+        return None
 
 pt, ft, status = get_promise_status()
 print json.dumps({
@@ -48,4 +61,5 @@ print json.dumps({
         "last_run" : pt,
         "last_update" : ft,
         "classes" : get_classes(),
+        "custom_classes" : get_custom_classes(),
     })
